@@ -6,13 +6,15 @@ import { acceptClientHandshake, createProxyHandshake, parseProxySecret } from ".
 if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 test("upstream handshake re-keys both MTProto transport directions", async () => {
-  const publicSecret = parseProxySecret("ed0964f9ddbf541d778cf09b169acd36").inner;
-  const upstreamSecret = parseProxySecret("a1b2c3d4e5f60718293a4b5c6d7e8f90").inner;
+  const publicSecret = parseProxySecret("00112233445566778899aabbccddeeff").inner;
+  const upstreamSecret = parseProxySecret("ffeeddccbbaa99887766554433221100").inner;
   const tag = 0xefefefef;
   const dcId = 2;
 
   const userClient = await createProxyHandshake(publicSecret, tag, dcId);
   const workerInbound = await acceptClientHandshake(userClient.wire, publicSecret);
+  assert.equal(workerInbound.tag, tag);
+  assert.equal(workerInbound.dcId, dcId);
 
   const workerUpstream = await createProxyHandshake(upstreamSecret, tag, dcId);
   const upstreamServer = await acceptClientHandshake(workerUpstream.wire, upstreamSecret);
