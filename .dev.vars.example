@@ -11,3 +11,8 @@
 # ⚠️ Replace the example value below with your own — never reuse it.
 
 PROXY_SECRET=0123456789abcdef0123456789abcdef
+
+# Optional sponsored mode: same upstream secret configured with -S on the
+# official MTProxy process running on your own server. Keep it private.
+# Generate with: openssl rand -hex 16
+UPSTREAM_MTPROXY_SECRET=
