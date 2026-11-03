@@ -14,5 +14,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run unit tests
+      - name: Test MTProto transport re-keying
         run: node --test
+      - name: Check upstream entrypoint shell syntax
+        run: sh -n upstream/entrypoint.sh
+      - name: Validate upstream Docker Compose
+        run: docker compose --env-file .env.upstream.example -f compose.upstream.yaml config --quiet
