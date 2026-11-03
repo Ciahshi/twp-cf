@@ -150,6 +150,8 @@ The Worker can keep the WebSocket/browser-facing endpoint while relaying each MT
 5. Deploy the Worker again. /healthz reports relay: upstream-mtproxy when the upstream route is active.
 
 The upstream listener must be reachable from Cloudflare Workers over outbound TCP. Do not expose its secret in wrangler.toml or source control. The upstream MTProxy must use the standard Middle Proxy configuration; do not enable direct-to-DC mode.
+For a ready-to-run Windows Server Docker setup, follow [SPONSORED-PROXY.md](SPONSORED-PROXY.md).
+
 ## Security notes
 
 - **Never share `PROXY_SECRET`** — anyone with it can use your proxy.
