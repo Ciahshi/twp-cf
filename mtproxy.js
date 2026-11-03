@@ -74,6 +74,39 @@ export async function createTelegramHandshake(tag, dcId) {
   const wire=new Uint8Array(nonce); wire.set(encrypted.subarray(56),56);
   return {wire,encrypt,decrypt};
 }
+// Create a client-side MTProxy handshake for a second (upstream) MTProxy.
+// The returned cipher states let the Worker re-key the transport without
+// exposing the upstream secret to Telegram clients.
+export async function createProxyHandshake(secret, tag, dcId) {
+  const key = secret instanceof Uint8Array ? secret : new Uint8Array(secret || []);
+  if (key.length !== 16) throw new Error("upstream MTProxy secret must be 16 bytes");
+  if (!TAGS.has(tag) || !TELEGRAM_DCS[Math.abs(dcId)]) throw new Error("invalid MTProxy handshake parameters");
+
+  let nonce;
+  do {
+    nonce = new Uint8Array(64);
+    crypto.getRandomValues(nonce);
+  } while (reserved(nonce));
+
+  const view = new DataView(nonce.buffer, nonce.byteOffset, nonce.byteLength);
+  view.setUint32(56, tag, true);
+  view.setInt16(60, dcId, true);
+  nonce[62] = nonce[63] = 0;
+
+  const material = nonce.subarray(8, 56);
+  const reversed = reverse(material);
+  const clientToServerKey = await sha256(concat(material.subarray(0, 32), key));
+  const serverToClientKey = await sha256(concat(reversed.subarray(0, 32), key));
+  const encrypt = new AesCtrStream(clientToServerKey, material.subarray(32, 48));
+  const decrypt = new AesCtrStream(serverToClientKey, reversed.subarray(32, 48));
+
+  // The first 56 bytes stay clear but CTR advances across the entire handshake.
+  const encrypted = await encrypt.crypt(nonce);
+  const wire = new Uint8Array(nonce);
+  wire.set(encrypted.subarray(56), 56);
+  return { wire, encrypt, decrypt };
+}
+
 function reserved(n){
   const v=new DataView(n.buffer,n.byteOffset,n.byteLength), x=v.getUint32(0,true);
   return n[0]===0xef || x===0x44414548 || x===0x54534f50 || x===0x20544547 || x===0xeeeeeeee || x===0xdddddddd || v.getUint32(4,true)===0;
