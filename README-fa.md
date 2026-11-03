@@ -135,6 +135,21 @@ Cloudflare میزبانی پروکسی را انجام می‌دهد — اضا�
 
 متغیرها در فایل `wrangler.toml` و بخش `[vars]` تعریف شده‌اند (به‌جز `PROXY_SECRET` که یک secret است).
 
+## نمایش کانال اسپانسر در خود تلگرام (MTProxy بالادستی)
+
+برای نمایش واقعی کانال تبلیغاتی در فهرست چت کاربران، Worker باید ترافیک را به یک نمونهٔ رسمی MTProxy منتقل کند. حالت اتصال مستقیم به DC اطلاعات Promotion را منتقل نمی‌کند.
+
+1. روی یک سرور عمومی، MTProxy رسمی تلگرام را با فایل‌های رسمی proxy-secret و proxy-multi.conf اجرا کنید. مقدار -S باید Secret خصوصیِ بالادستی باشد و تگ دریافتی از ربات هم به -P داده شود:
+```sh
+./mtproto-proxy -u nobody -p 8888 -H 443 -S <UPSTREAM_MTPROXY_SECRET> -P c22830b06c489dc584791d4637891a32 --aes-pwd proxy-secret proxy-multi.conf -M 1
+```
+
+2. در تنظیمات Worker، UPSTREAM_MTPROXY_HOST را روی IP عمومی یا دامنهٔ سرور و UPSTREAM_MTPROXY_PORT را روی پورت ورودی MTProxy (معمولاً 443) تنظیم کنید.
+3. یک Secret جداگانهٔ ۳۲ کاراکتری Hex در Cloudflare با نام UPSTREAM_MTPROXY_SECRET ثبت کنید. این مقدار باید دقیقاً با -S سرور بالادستی یکی باشد. Secret عمومی کاربران (PROXY_SECRET) تغییر نمی‌کند.
+4. SPONSOR_PROXY_TAG باید همان تگ @MTProxyBot باشد و سرور بالادستی نیز با همان -P اجرا شود.
+5. Worker را دوباره Deploy کنید. وقتی مسیر فعال شد، /healthz مقدار relay: upstream-mtproxy را نشان می‌دهد.
+
+پورت TCP سرور باید از Cloudflare Workers قابل دسترسی باشد. Secret بالادستی را داخل GitHub یا wrangler.toml قرار ندهید. سرور رسمی باید از مسیر Middle Proxy استاندارد استفاده کند و در حالت Direct-to-DC نباشد.
 ## نکات امنیتی
 
 - **`PROXY_SECRET` را با کسی به اشتراک نگذارید** — هر کسی که این کلید را داشته باشد می‌تواند از پروکسی شما استفاده کند.
