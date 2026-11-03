@@ -9,6 +9,28 @@ TWP-CF is a Cloudflare Worker Web Proxy, not a raw TCP MTProxy listener. Telegra
 - Upstream host/port: the public host and TCP listener port of your official MTProxy server.
 - Promotion tag: c22830b06c489dc584791d4637891a32, registered with @MTProxyBot for @CiaConfig.
 
+## Windows Server / Docker deployment
+
+On a Windows Server with Docker Desktop or Docker Engine available:
+
+1. Copy .env.upstream.example to .env.upstream.
+2. Generate a private backend secret with `openssl rand -hex 16` (or another secure 32-hex generator), then place the same value in .env.upstream as UPSTREAM_MTPROXY_SECRET.
+3. Keep SPONSOR_PROXY_TAG equal to the tag shown above.
+4. Start the backend from the repository root:
+
+```powershell
+docker compose --env-file .env.upstream -f compose.upstream.yaml up -d --build
+```
+
+5. Allow inbound TCP on the selected MTPROXY_LISTEN_PORT in the server firewall. Keep TCP 8888 closed to the public; it is bound to loopback only.
+6. Set the Worker UPSTREAM_MTPROXY_HOST to this server's public IP or DNS name and UPSTREAM_MTPROXY_PORT to the same MTPROXY_LISTEN_PORT. Put the same UPSTREAM_MTPROXY_SECRET into Cloudflare with:
+
+```powershell
+npx wrangler secret put UPSTREAM_MTPROXY_SECRET
+```
+
+Then deploy the Worker. The .env.upstream file is ignored by Git and must never be committed.
+
 Generate the upstream secret on the server:
 
 ```sh
