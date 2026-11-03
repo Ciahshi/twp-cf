@@ -135,6 +135,21 @@ The Telegram client first opens the `bridge` page inside its iframe. The bridge 
 
 Vars are declared in `wrangler.toml` under `[vars]` (except `PROXY_SECRET`, which is a secret).
 
+## Sponsored channel mode (official MTProxy upstream)
+
+The Worker can keep the WebSocket/browser-facing endpoint while relaying each MTProto stream through an official MTProxy process. This is required for Telegram's promoted-channel tag: the upstream process must use the -P option and the official Middle Proxy route. Direct-to-DC mode does not carry promotion metadata.
+
+1. Run the official TelegramMessenger/MTProxy on a public server using the same upstream secret configured below, plus the official proxy-secret and proxy-multi.conf files:
+```sh
+./mtproto-proxy -u nobody -p 8888 -H 443 -S <UPSTREAM_MTPROXY_SECRET> -P c22830b06c489dc584791d4637891a32 --aes-pwd proxy-secret proxy-multi.conf -M 1
+```
+
+2. In Cloudflare, set UPSTREAM_MTPROXY_HOST to that server's public DNS name or IPv4 and UPSTREAM_MTPROXY_PORT to its listener port (normally 443).
+3. Store a separate 32-hex value as the Cloudflare secret UPSTREAM_MTPROXY_SECRET (it must match the upstream process's -S value). The public client-facing PROXY_SECRET stays unchanged.
+4. Keep SPONSOR_PROXY_TAG equal to the tag issued by @MTProxyBot. Confirm the same tag is passed to the upstream -P argument.
+5. Deploy the Worker again. /healthz reports relay: upstream-mtproxy when the upstream route is active.
+
+The upstream listener must be reachable from Cloudflare Workers over outbound TCP. Do not expose its secret in wrangler.toml or source control. The upstream MTProxy must use the standard Middle Proxy configuration; do not enable direct-to-DC mode.
 ## Security notes
 
 - **Never share `PROXY_SECRET`** — anyone with it can use your proxy.
