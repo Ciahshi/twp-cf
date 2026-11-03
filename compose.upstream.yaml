@@ -1,0 +1,12 @@
+services:
+  mtproxy-upstream:
+    build:
+      context: ./upstream
+    container_name: twp-cf-mtproxy-upstream
+    restart: unless-stopped
+    environment:
+      UPSTREAM_MTPROXY_SECRET: ${UPSTREAM_MTPROXY_SECRET:?Set UPSTREAM_MTPROXY_SECRET in .env.upstream}
+      SPONSOR_PROXY_TAG: ${SPONSOR_PROXY_TAG:?Set SPONSOR_PROXY_TAG in .env.upstream}
+    ports:
+      - "${MTPROXY_LISTEN_PORT:-443}:443/tcp"
+      - "127.0.0.1:8888:8888/tcp"
