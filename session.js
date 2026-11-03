@@ -1,4 +1,4 @@
-import { TELEGRAM_DCS, parseProxySecret, acceptClientHandshake, createTelegramHandshake } from "./mtproxy.js";
+import { TELEGRAM_DCS, parseProxySecret, acceptClientHandshake, createTelegramHandshake, createProxyHandshake } from "./mtproxy.js";
 import { FRAME, HEADER_SIZE, INITIAL_WINDOW, DATA_CHUNK, MAX_WS_MESSAGE, encodeFrame, parseFrames, clampInt, u32 } from "./protocol.js";
 
 // Bounds include frame headers and an allowance for each retained queue item.
@@ -42,6 +42,7 @@ export class RelaySession {
     this.downlinkItems = 0;
     this.downlinkWaiters = new Set();
     this.secret = null;
+    this.upstreamSecret = null;
   }
 
   trace(event, details = {}) {
@@ -205,42 +206,88 @@ export class RelaySession {
     this.active(stream);
     let grant = payload.length;
     if (!stream.writer) {
-      // Only retain the 64-byte handshake, not all pre-authentication DATA.
+      // Retain only the 64-byte obfuscated MTProto handshake until it can be
+      // authenticated; never forward unauthenticated partial handshakes.
       const take = Math.min(64 - stream.handshake.length, payload.length);
       const joined = new Uint8Array(stream.handshake.length + take);
-      joined.set(stream.handshake); joined.set(payload.subarray(0, take), stream.handshake.length);
+      joined.set(stream.handshake);
+      joined.set(payload.subarray(0, take), stream.handshake.length);
       stream.handshake = joined;
       stream.handshakeBytes += take;
-      if (joined.length < 64) return; // Do not acknowledge unvalidated partial handshakes.
+      if (joined.length < 64) return;
+
       if (!this.secret) this.secret = parseProxySecret(this.env.PROXY_SECRET).inner;
       const client = await acceptClientHandshake(joined, this.secret);
       this.active(stream);
-      const tg = await createTelegramHandshake(client.tag, client.dcId);
-      this.active(stream);
-      clearTimeout(stream.handshakeTimer); stream.handshakeTimer = null;
+
+      const upstreamHost = String(this.env.UPSTREAM_MTPROXY_HOST || "").trim();
+      let transport;
+      let socket;
       const started = this.diagnostics ? Date.now() : 0;
-      const socket = this.connect({ hostname: TELEGRAM_DCS[Math.abs(client.dcId)], port: 443 }, { allowHalfOpen: false });
+
+      if (upstreamHost) {
+        if (!isValidUpstreamHost(upstreamHost)) throw new Error("invalid UPSTREAM_MTPROXY_HOST");
+        const upstreamPort = clampInt(this.env.UPSTREAM_MTPROXY_PORT, 1, 65535, 443);
+        if (!this.upstreamSecret) {
+          this.upstreamSecret = parseProxySecret(this.env.UPSTREAM_MTPROXY_SECRET).inner;
+        }
+        transport = await createProxyHandshake(this.upstreamSecret, client.tag, client.dcId);
+        this.active(stream);
+        socket = this.connect({ hostname: upstreamHost, port: upstreamPort }, { allowHalfOpen: false });
+      } else {
+        transport = await createTelegramHandshake(client.tag, client.dcId);
+        this.active(stream);
+        socket = this.connect({ hostname: TELEGRAM_DCS[Math.abs(client.dcId)], port: 443 }, { allowHalfOpen: false });
+      }
+
       stream.socket = socket; // Track before awaiting: CLOSE must cancel in-flight dials.
       Promise.resolve(socket.closed).catch(() => {});
       await waitFor(socket.opened, stream.abort.signal, LIMITS.connectTimeout, "connect timeout");
       this.active(stream);
-      this.trace("telegram_dc_connected", { streamId: stream.id, dcId: client.dcId, connectMs: started ? Date.now() - started : undefined });
       stream.writer = socket.writable.getWriter();
-      stream.clientDecrypt = client.clientDecrypt; stream.clientEncrypt = client.clientEncrypt;
-      stream.tgEncrypt = tg.encrypt; stream.tgDecrypt = tg.decrypt;
+      stream.clientDecrypt = client.clientDecrypt;
+      stream.clientEncrypt = client.clientEncrypt;
+
+      if (upstreamHost) {
+        stream.relayMode = "upstream-mtproxy";
+        stream.upstreamEncrypt = transport.encrypt;
+        stream.upstreamDecrypt = transport.decrypt;
+        this.trace("upstream_mtproxy_connected", {
+          streamId: stream.id,
+          host: upstreamHost,
+          port: clampInt(this.env.UPSTREAM_MTPROXY_PORT, 1, 65535, 443),
+          connectMs: started ? Date.now() - started : undefined,
+        });
+      } else {
+        stream.relayMode = "direct";
+        stream.tgEncrypt = transport.encrypt;
+        stream.tgDecrypt = transport.decrypt;
+        this.trace("telegram_dc_connected", {
+          streamId: stream.id,
+          dcId: client.dcId,
+          connectMs: started ? Date.now() - started : undefined,
+        });
+      }
+
       stream.handshake = new Uint8Array();
-      await waitFor(stream.writer.write(tg.wire), stream.abort.signal, LIMITS.writeTimeout, "write timeout");
+      clearTimeout(stream.handshakeTimer);
+      stream.handshakeTimer = null;
+      await waitFor(stream.writer.write(transport.wire), stream.abort.signal, LIMITS.writeTimeout, "write timeout");
       this.active(stream);
       this.ctx.waitUntil(this.readStream(stream));
       grant = stream.handshakeBytes + payload.length - take;
       stream.handshakeBytes = 0;
       payload = payload.subarray(take);
     }
-    // Bound temporary crypto buffers; FIFO preserves the CTR position.
+
+    // Decrypt the user's transport stream, then encrypt it for either the
+    // direct Telegram DC or the separately-secreted upstream MTProxy.
     for (let offset = 0; offset < payload.length; offset += DATA_CHUNK) {
       const plain = await stream.clientDecrypt.crypt(payload.subarray(offset, offset + DATA_CHUNK));
       this.active(stream);
-      const encrypted = await stream.tgEncrypt.crypt(plain);
+      const encrypted = stream.relayMode === "upstream-mtproxy"
+        ? await stream.upstreamEncrypt.crypt(plain)
+        : await stream.tgEncrypt.crypt(plain);
       this.active(stream);
       await waitFor(stream.writer.write(encrypted), stream.abort.signal, LIMITS.writeTimeout, "write timeout");
       this.active(stream);
@@ -320,7 +367,10 @@ export class RelaySession {
           stream.sent.push({ remaining: size });
           stream.downlinkBytes += cost; stream.downlinkItems++;
           this.downlinkBytes += cost; this.downlinkItems++;
-          const plain = await stream.tgDecrypt.crypt(bytes.subarray(offset, offset + size));
+          const incoming = bytes.subarray(offset, offset + size);
+          const plain = stream.relayMode === "upstream-mtproxy"
+            ? await stream.upstreamDecrypt.crypt(incoming)
+            : await stream.tgDecrypt.crypt(incoming);
           this.active(stream);
           const encrypted = await stream.clientEncrypt.crypt(plain);
           this.active(stream);
@@ -401,6 +451,11 @@ export function waitFor(promise, signal, timeout, reason) {
     signal.addEventListener("abort", aborted, { once: true });
     timer = setTimeout(() => finish(reject, new Error(reason)), timeout);
   });
+}
+
+function isValidUpstreamHost(value) {
+  if (value.length > 253 || value.startsWith(".") || value.endsWith(".")) return false;
+  return value.split(".").every((label) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label));
 }
 
 function ignoreFailure(fn) { try { Promise.resolve(fn()).catch(() => {}); } catch {} }
