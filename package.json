@@ -1,7 +1,7 @@
 {
   "name": "twp-cf",
   "version": "1.0.0",
-  "description": "Telegram Web Proxy on Cloudflare Workers",
+  "description": "Telegram Web Proxy on Cloudflare Workers with optional sponsored-channel MTProxy upstream",
   "type": "module",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
@@ -23,13 +23,27 @@
       },
       "DIAGNOSTICS": {
         "description": "Set to `1` to enable verbose logging. Leave at `0` unless you are debugging."
+      },
+      "UPSTREAM_MTPROXY_HOST": {
+        "description": "Public DNS hostname or IPv4 address of your official Telegram MTProxy upstream. Required for real sponsored-channel delivery."
+      },
+      "UPSTREAM_MTPROXY_PORT": {
+        "description": "TCP port of your official upstream MTProxy listener (normally 443)."
+      },
+      "UPSTREAM_MTPROXY_SECRET": {
+        "description": "Private 32-hex secret accepted by the upstream official MTProxy -S option. Set as a Cloudflare secret; never commit it."
+      },
+      "SPONSOR_PROXY_TAG": {
+        "description": "32-hex proxy tag from @MTProxyBot. The upstream official MTProxy must be started with -P using this same tag."
       }
     }
   },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "secret": "wrangler secret put PROXY_SECRET"
+    "secret": "wrangler secret put PROXY_SECRET",
+    "test": "node --test",
+    "upstream-secret": "wrangler secret put UPSTREAM_MTPROXY_SECRET"
   },
   "devDependencies": {
     "wrangler": "^4.20.0"
