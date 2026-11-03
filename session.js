@@ -227,6 +227,7 @@ export class RelaySession {
 
       if (upstreamHost) {
         if (!isValidUpstreamHost(upstreamHost)) throw new Error("invalid UPSTREAM_MTPROXY_HOST");
+        if (!/^[0-9a-f]{32}$/i.test(String(this.env.SPONSOR_PROXY_TAG || ""))) throw new Error("SPONSOR_PROXY_TAG must be the 32-hex tag configured in the upstream MTProxy -P option");
         const upstreamPort = clampInt(this.env.UPSTREAM_MTPROXY_PORT, 1, 65535, 443);
         if (!this.upstreamSecret) {
           this.upstreamSecret = parseProxySecret(this.env.UPSTREAM_MTPROXY_SECRET).inner;
