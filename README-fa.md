@@ -150,6 +150,8 @@ Cloudflare میزبانی پروکسی را انجام می‌دهد — اضا�
 5. Worker را دوباره Deploy کنید. وقتی مسیر فعال شد، /healthz مقدار relay: upstream-mtproxy را نشان می‌دهد.
 
 پورت TCP سرور باید از Cloudflare Workers قابل دسترسی باشد. Secret بالادستی را داخل GitHub یا wrangler.toml قرار ندهید. سرور رسمی باید از مسیر Middle Proxy استاندارد استفاده کند و در حالت Direct-to-DC نباشد.
+برای راه‌اندازی سرور بالادستی با Docker روی Windows Server، راهنمای [SPONSORED-PROXY.md](SPONSORED-PROXY.md) را ببینید.
+
 ## نکات امنیتی
 
 - **`PROXY_SECRET` را با کسی به اشتراک نگذارید** — هر کسی که این کلید را داشته باشد می‌تواند از پروکسی شما استفاده کند.
