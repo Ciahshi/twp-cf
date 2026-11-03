@@ -33,10 +33,7 @@ make
 Run it with the private upstream secret and registered promotion tag:
 
 ```sh
-./objs/bin/mtproto-proxy -u nobody -p 8888 -H 443 \\
-  -S <UPSTREAM_MTPROXY_SECRET> \\
-  -P c22830b06c489dc584791d4637891a32 \\
-  --aes-pwd proxy-secret proxy-multi.conf -M 1
+./objs/bin/mtproto-proxy -u nobody -p 8888 -H 443 -S <UPSTREAM_MTPROXY_SECRET> -P c22830b06c489dc584791d4637891a32 --aes-pwd proxy-secret proxy-multi.conf -M 1
 ```
 
 Here -H 443 is the MTProxy client TCP listener; -p 8888 is the local statistics port. Restrict the statistics port to loopback.
