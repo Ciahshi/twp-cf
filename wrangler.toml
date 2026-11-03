@@ -13,6 +13,7 @@ compatibility_date = "2025-01-01"
 SESSION_TTL_SECONDS = "300"
 MAX_STREAMS = "64"
 DIAGNOSTICS = "0"
+SPONSOR_CHANNEL_URL = "https://t.me/CiaConfig"
 
 [[durable_objects.bindings]]
 name = "SESSIONS"
