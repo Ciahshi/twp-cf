@@ -86,7 +86,8 @@ async function route(request, env) {
 
   if (url.pathname === "/healthz" && request.method === "GET") {
     const upstream = Boolean(String(env.UPSTREAM_MTPROXY_HOST || "").trim());
-    return Response.json({ ok: true, carrier: "websocket", relay: upstream ? "upstream-mtproxy" : "direct-telegram-dc", sponsorTagConfigured: /^[0-9a-f]{32}$/i.test(String(env.SPONSOR_PROXY_TAG || "")) }, { headers: noStore() });
+    const sponsorTagConfigured = /^[0-9a-f]{32}$/i.test(String(env.SPONSOR_PROXY_TAG || ""));
+    return Response.json({ ok: true, carrier: "websocket", relay: upstream ? "upstream-mtproxy" : "direct-telegram-dc", sponsorTagConfigured, sponsoredRelayReady: upstream && sponsorTagConfigured }, { headers: noStore() });
   }
 
   return camouflage();
